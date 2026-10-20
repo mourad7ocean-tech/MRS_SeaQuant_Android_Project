@@ -1,0 +1,41 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - run: npm install
+      - run: npx cap add android
+      - name: Apply MRS SeaQuant icon (replace ALL default icons)
+        run: |
+          RES=android/app/src/main/res
+          rm -rf $RES/mipmap-* $RES/drawable-v24/ic_launcher_foreground.xml
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p $RES/mipmap-$d
+            cp icons/mipmap-$d/*.png $RES/mipmap-$d/
+          done
+          mkdir -p $RES/mipmap-anydpi-v26
+          cp icons/mipmap-anydpi-v26/*.xml $RES/mipmap-anydpi-v26/
+          MAN=android/app/src/main/AndroidManifest.xml
+          sed -i 's#android:icon="[^"]*"#android:icon="@mipmap/ic_launcher"#; s#android:roundIcon="[^"]*"#android:roundIcon="@mipmap/ic_launcher_round"#' $MAN
+          grep -n "icon" $MAN
+          ls -R $RES | grep -E "mipmap|ic_"
+      - run: npx cap sync android
+      - name: Build debug APK
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - name: Name the APK with the build number
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk MRS-SeaQuant-build${{ github.run_number }}.apk
+      - name: Check icon is inside the APK
+        run: unzip -l MRS-SeaQuant-build${{ github.run_number }}.apk | grep -E "ic_sq|ic_launcher"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MRS-SeaQuant-apk-build${{ github.run_number }}
+          path: MRS-SeaQuant-build${{ github.run_number }}.apk
